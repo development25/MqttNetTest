@@ -1,7 +1,6 @@
 ﻿using MQTTnet;
 using MQTTnet.Client;
 using MQTTnet.Extensions.ManagedClient;
-using MQTTnet.Internal;
 using MQTTnet.Server;
 using System;
 using System.Collections.Generic;
@@ -11,7 +10,7 @@ using System.Threading.Tasks;
 
 namespace MqttNetTest.Model
 {
-    public class ClientSend
+    public class CliendReceive
     {
         IManagedMqttClient Client { get; set; }
         private string UUID_ { get; set; }
@@ -27,12 +26,14 @@ namespace MqttNetTest.Model
             }
         }
 
-        public ClientSend()
+
+        public CliendReceive()
         {
             UUID = Guid.NewGuid().ToString("N");
             Client = new MqttFactory().CreateManagedMqttClient();
             Callbacks();
         }
+
 
         public async Task Start()
         {
@@ -69,6 +70,7 @@ namespace MqttNetTest.Model
         {
             try
             {
+                await UnSubscriptions();
                 await Client.StopAsync();
             }
             catch (Exception) { }
@@ -76,6 +78,7 @@ namespace MqttNetTest.Model
 
         private async void Callbacks()
         {
+            Client.ApplicationMessageReceivedAsync += MessageReceived;
             Client.ConnectedAsync += Connected;
             Client.DisconnectedAsync += Disconnected;
 
@@ -84,14 +87,24 @@ namespace MqttNetTest.Model
 
         private void UnCallbacks()
         {
+            Client.ApplicationMessageReceivedAsync -= MessageReceived;
             Client.ConnectedAsync -= Connected;
             Client.DisconnectedAsync -= Disconnected;
         }
 
-        private Task Connected(MqttClientConnectedEventArgs context)
+        private async Task Subscriptions()
         {
-            _ = Task.Run(Send);
-            return Task.CompletedTask;
+            await Client.SubscribeAsync("mqttnet/test/send/#", MQTTnet.Protocol.MqttQualityOfServiceLevel.AtMostOnce);
+        }
+
+        private async Task UnSubscriptions()
+        {
+            await Client.UnsubscribeAsync("mqttnet/test/send/#");
+        }
+
+        private async Task Connected(MqttClientConnectedEventArgs context)
+        {
+            await Subscriptions();
         }
 
         private Task Disconnected(MqttClientDisconnectedEventArgs context)
@@ -108,26 +121,35 @@ namespace MqttNetTest.Model
             catch (Exception) { }
         }
 
-        private async void Send()
+        private async Task MessageReceived(MqttApplicationMessageReceivedEventArgs context)
+        {
+            if (MqttTopicFilterComparer.Compare(context.ApplicationMessage.Topic, "mqttnet/test/send/#") == MqttTopicFilterCompareResult.IsMatch)
+            {
+                await ParseMessage(context.ApplicationMessage);
+            }
+        }
+
+        public async Task ParseMessage(MqttApplicationMessage value)
+        {
+            var topicSplited = value.Topic.Split('/');
+            var payloadString = value.ConvertPayloadToString();
+
+            await ReceiveData(topicSplited, payloadString);
+        }
+
+        private async Task ReceiveData(string[] topic, string payload)
         {
             MqttApplicationMessage message = new MqttApplicationMessage();
             Random r = new Random();
 
-            while (true)
-            {
-                for(int i = 0; i < 20; i++)
-                {
-                    message = new MqttApplicationMessage();
-                    message.Retain = true;
-                    message.QualityOfServiceLevel = MQTTnet.Protocol.MqttQualityOfServiceLevel.AtMostOnce;
-                    message.Payload = Encoding.UTF8.GetBytes(r.Next(0, 100) + "");
-                    message.Topic = "mqttnet/test/send/person/" + i + "/data";
+            message = new MqttApplicationMessage();
+            message.Retain = true;
+            message.QualityOfServiceLevel = MQTTnet.Protocol.MqttQualityOfServiceLevel.AtMostOnce;
+            message.Payload = Encoding.UTF8.GetBytes(r.Next(0, 100) + " + " + payload);
+            message.Topic = "mqttnet/test/receive/person/" + topic[4] + "/data";
 
-                    await PublishMessage(message);
-                }
+            await PublishMessage(message);
 
-                await Task.Delay(10);
-            }
         }
     }
 }

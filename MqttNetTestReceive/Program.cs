@@ -5,13 +5,13 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace MqttNetTest
+namespace MqttNetTestReceive
 {
     internal class Program
     {
         public static void Main(string[] args)
         {
-            var clientSend = new ClientSend();
+            var clientReceive = new CliendReceive();
 
             Console.Read();
         }
